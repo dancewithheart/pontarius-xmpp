@@ -1,7 +1,9 @@
 {-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Xmpp.Sasl.Mechanisms.Scram
   where
@@ -10,13 +12,14 @@ import           Control.Applicative ((<$>))
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
-import qualified Crypto.Classes          as Crypto
-import qualified Crypto.HMAC             as Crypto
-import qualified Crypto.Hash.CryptoAPI   as Crypto
+import qualified Crypto.Hash             as Hash
+import qualified Crypto.MAC.HMAC         as HMAC
+import qualified Data.ByteArray          as BA
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Base64  as B64
 import           Data.ByteString.Char8   as BS8 (unpack)
 import           Data.List (foldl1', genericTake)
+import Data.Proxy (Proxy(..))
 import qualified Data.Text               as Text
 import qualified Data.Text.Encoding      as Text
 import           Network.Xmpp.Sasl.Common
@@ -25,15 +28,34 @@ import           Network.Xmpp.Types
 
 -- | A nicer name for undefined, for use as a dummy token to determin
 -- the hash function to use
-hashToken :: (Crypto.Hash ctx hash) => hash
-hashToken = undefined
+hashToken :: Proxy hash
+hashToken = Proxy
+
+hashBytes
+  :: forall hash proxy
+   . Hash.HashAlgorithm hash
+  => proxy hash
+  -> BS.ByteString
+  -> BS.ByteString
+hashBytes _ =
+  BA.convert . (Hash.hash :: BS.ByteString -> Hash.Digest hash)
+
+hmacBytes
+  :: forall hash proxy
+   . Hash.HashAlgorithm hash
+  => proxy hash
+  -> BS.ByteString
+  -> BS.ByteString
+  -> BS.ByteString
+hmacBytes _ key msg =
+  BA.convert (HMAC.hmac key msg :: HMAC.HMAC hash)
 
 -- | Salted Challenge Response Authentication Mechanism (SCRAM) SASL
 -- mechanism according to RFC 5802.
 --
 -- This implementation is independent and polymorphic in the used hash function.
-scram :: (Crypto.Hash ctx hash)
-      => hash            -- ^ Dummy argument to determine the hash to use; you
+scram :: Hash.HashAlgorithm hash
+      => Proxy hash      -- ^ Dummy argument to determine the hash to use; you
                          --   can safely pass undefined or a 'hashToken' to it
       -> Text.Text       -- ^ Authentication ID (user name)
       -> Maybe Text.Text -- ^ Authorization ID
@@ -55,16 +77,11 @@ scram hToken authcid authzid password = do
         unless (lookup "v" finalPairs == Just v) $ throwError AuthOtherFailure -- TODO: Log
         return ()
       where
-        -- We need to jump through some hoops to get a polymorphic solution
-        encode :: Crypto.Hash ctx hash => hash -> hash -> BS.ByteString
-        encode _hashtoken = Crypto.encode
-
         hash :: BS.ByteString -> BS.ByteString
-        hash str = encode hToken $ Crypto.hash' str
+        hash = hashBytes hToken
 
         hmac :: BS.ByteString -> BS.ByteString -> BS.ByteString
-        hmac key str = encode hToken $ Crypto.hmac' (Crypto.MacKey key) str
-
+        hmac = hmacBytes hToken
         authzid'' :: Maybe BS.ByteString
         authzid''              = (\z -> "a=" +++ Text.encodeUtf8 z) <$> authzid'
 
@@ -155,7 +172,7 @@ scramSha1 :: Username  -- ^ username
 scramSha1 authcid authzid passwd =
     ( "SCRAM-SHA-1"
     , do
-          r <- runExceptT $ scram (hashToken :: Crypto.SHA1) authcid authzid passwd
+          r <- runExceptT $ scram (Proxy :: Proxy Hash.SHA1) authcid authzid passwd
           case r of
               Left (AuthStreamFailure e) -> return $ Left e
               Left e -> return $ Right $ Just e

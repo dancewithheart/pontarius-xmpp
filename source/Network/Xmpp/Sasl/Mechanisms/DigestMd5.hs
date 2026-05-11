@@ -7,13 +7,11 @@ module Network.Xmpp.Sasl.Mechanisms.DigestMd5
 
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
-import qualified Crypto.Classes as CC
-import qualified Data.Binary as Binary
-import qualified Data.ByteString as BS
+import qualified Crypto.Hash            as Hash
+import qualified Data.ByteArray         as BA
+import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base64 as B64
 import qualified Data.ByteString.Char8 as BS8
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Digest.Pure.MD5 as MD5
 import qualified Data.List as L
 import           Data.Text (Text)
 import qualified Data.Text.Encoding as Text
@@ -80,15 +78,16 @@ xmppDigestMd5 authcid' authzid' password' = do
                             , ["charset"   ,       "utf-8"  ]
                             ]
             in B64.encode response
-        hash :: [BS8.ByteString] -> BS8.ByteString
+        -- lowercase hex MD5, used in DIGEST-MD5 response
+        hash :: [BS.ByteString] -> BS.ByteString
         hash = BS8.pack . show
-               . (CC.hash' :: BS.ByteString -> MD5.MD5Digest)
-                  . BS.intercalate (":")
-        hashRaw :: [BS8.ByteString] -> BS8.ByteString
-        hashRaw = toStrict . Binary.encode .
-            (CC.hash' :: BS.ByteString -> MD5.MD5Digest) . BS.intercalate (":")
-        toStrict :: BL.ByteString -> BS8.ByteString
-        toStrict = BS.concat . BL.toChunks
+            . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
+            . BS.intercalate ":"
+        -- raw 16-byte MD5 digest, used for HA1 inner hash
+        hashRaw :: [BS.ByteString] -> BS.ByteString
+        hashRaw = BA.convert
+            . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
+            . BS.intercalate ":"
         -- TODO: this only handles MD5-sess
         md5Digest :: BS8.ByteString
                   -> Maybe BS8.ByteString
