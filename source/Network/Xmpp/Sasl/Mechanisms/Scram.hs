@@ -1,4 +1,5 @@
 {-# OPTIONS_HADDOCK hide #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -33,7 +34,9 @@ hashToken = Proxy
 
 hashBytes
   :: forall hash proxy
-   . Hash.HashAlgorithm hash
+   . ( Hash.HashAlgorithm hash
+     , BA.ByteArrayAccess (Hash.Digest hash)
+     )
   => proxy hash
   -> BS.ByteString
   -> BS.ByteString
@@ -42,7 +45,9 @@ hashBytes _ =
 
 hmacBytes
   :: forall hash proxy
-   . Hash.HashAlgorithm hash
+   . ( Hash.HashAlgorithm hash
+     , BA.ByteArrayAccess (HMAC.HMAC hash)
+     )
   => proxy hash
   -> BS.ByteString
   -> BS.ByteString
@@ -54,8 +59,11 @@ hmacBytes _ key msg =
 -- mechanism according to RFC 5802.
 --
 -- This implementation is independent and polymorphic in the used hash function.
-scram :: Hash.HashAlgorithm hash
-      => Proxy hash      -- ^ Dummy argument to determine the hash to use; you
+scram :: ( Hash.HashAlgorithm hash
+      , BA.ByteArrayAccess (Hash.Digest hash)
+      , BA.ByteArrayAccess (HMAC.HMAC hash)
+      )
+      => proxy hash      -- ^ Dummy argument to determine the hash to use; you
                          --   can safely pass undefined or a 'hashToken' to it
       -> Text.Text       -- ^ Authentication ID (user name)
       -> Maybe Text.Text -- ^ Authorization ID
