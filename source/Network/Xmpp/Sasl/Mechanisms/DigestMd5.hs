@@ -3,6 +3,9 @@
 
 module Network.Xmpp.Sasl.Mechanisms.DigestMd5
     ( digestMd5
+    , md5Hex
+    , md5Raw
+    , digestMd5Response
     ) where
 
 import           Control.Monad.Except
@@ -55,7 +58,7 @@ xmppDigestMd5 authcid' authzid' password' = do
 
             nc         = "00000001"
             digestURI  = "xmpp/" `BS.append` Text.encodeUtf8 hname
-            digest     = md5Digest
+            digest     = digestMd5Response
                 uname_
                 (lookup "realm" prs)
                 passwd_
@@ -78,33 +81,36 @@ xmppDigestMd5 authcid' authzid' password' = do
                             , ["charset"   ,       "utf-8"  ]
                             ]
             in B64.encode response
-        -- lowercase hex MD5, used in DIGEST-MD5 response
-        hash :: [BS.ByteString] -> BS.ByteString
-        hash = BS8.pack . show
-            . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
-            . BS.intercalate ":"
-        -- raw 16-byte MD5 digest, used for HA1 inner hash
-        hashRaw :: [BS.ByteString] -> BS.ByteString
-        hashRaw = BA.convert
-            . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
-            . BS.intercalate ":"
-        -- TODO: this only handles MD5-sess
-        md5Digest :: BS8.ByteString
-                  -> Maybe BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-                  -> BS8.ByteString
-        md5Digest uname realm pwd digestURI nc qop nonce cnonce =
-          let ha1 = hash [ hashRaw [uname, maybe "" id realm, pwd]
-                         , nonce
-                         , cnonce
-                         ]
-              ha2 = hash ["AUTHENTICATE", digestURI]
-          in hash [ha1, nonce, nc, cnonce, qop, ha2]
+
+-- lowercase hex MD5, used in DIGEST-MD5 response
+md5Hex :: [BS.ByteString] -> BS.ByteString
+md5Hex = BS8.pack . show
+    . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
+    . BS.intercalate ":"
+
+-- raw 16-byte MD5 digest, used for HA1 inner hash
+md5Raw :: [BS.ByteString] -> BS.ByteString
+md5Raw = BA.convert
+    . (Hash.hash :: BS.ByteString -> Hash.Digest Hash.MD5)
+    . BS.intercalate ":"
+
+-- TODO: this only handles MD5-sess
+digestMd5Response :: BS8.ByteString
+          -> Maybe BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+          -> BS8.ByteString
+digestMd5Response uname realm pwd digestURI nc qop nonce cnonce =
+  let ha1 = md5Hex [ md5Raw [uname, maybe "" id realm, pwd]
+                 , nonce
+                 , cnonce
+                 ]
+      ha2 = md5Hex ["AUTHENTICATE", digestURI]
+  in md5Hex [ha1, nonce, nc, cnonce, qop, ha2]
 
 digestMd5 :: Username -- ^ Authentication identity (authcid or username)
           -> Maybe AuthZID -- ^ Authorization identity (authzid)

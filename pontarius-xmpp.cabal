@@ -155,6 +155,8 @@ Test-Suite tests
                , Tests.Parsers
                , Tests.Picklers
                , Tests.Stream
+               , Tests.Md5Digest
+               , Tests.SaslCrypto
   ghc-options: -O2 -fno-warn-orphans -fconstraint-solver-iterations=10
   default-language:    Haskell2010
 
